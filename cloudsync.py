@@ -36,7 +36,8 @@ def enabled():
 
 
 def _h(extra=None):
-    h = {"Authorization": f"Bearer {KEY}", "apikey": KEY}
+    # New Supabase keys (sb_secret_...) are sent in the apikey header only; legacy service_role keys also as Bearer.
+    h = {"apikey": KEY} if KEY.startswith("sb_") else {"Authorization": f"Bearer {KEY}", "apikey": KEY}
     if extra:
         h.update(extra)
     return h
