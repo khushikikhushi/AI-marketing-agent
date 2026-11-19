@@ -1,0 +1,41 @@
+{
+  "slug": "ease-ai",
+  "name": "EASE AI",
+  "full_name": "EASE AI — AI workshops & learning by E.A.S.E.",
+  "default_format": "portrait",
+  "draft": true,
+  "summary": "EASE AI runs live and in-person AI workshops for everyone — students, educators, professionals, creators. Cinematic, confident, slightly provocative: it names the gap between using AI and knowing what to do with it. Night-black and signal orange, editorial grotesk type, mono labels, real UI as proof.",
+  "colours": [
+    {"name": "Signal Orange", "hex": "#FF6A13", "use": "The accent: key headline line, FREE pill, CTA buttons, labels, highlights. Never a full background except a CTA."},
+    {"name": "Night", "hex": "#080C14", "use": "Cool near-black for dark cinematic posters"},
+    {"name": "Ember Black", "hex": "#140D0A", "use": "Warm near-black for dark editorial posters and info bars"},
+    {"name": "Cream", "hex": "#F4EFE7", "use": "Light posters' background; headline colour on dark (instead of pure white)"},
+    {"name": "Warm Grey", "hex": "#8D8887", "use": "Secondary text, de-emphasised list items ('the basic approach')"},
+    {"name": "White", "hex": "#FFFFFF", "use": "Logo tile, UI cards"}
+  ],
+  "fonts": "Display: 'Inter Tight' 800–900, ALL CAPS for headlines, tight tracking (-0.04em to -0.05em), leading 0.9–0.95. Labels: 'JetBrains Mono' 500–700, ALL CAPS, wide tracking (0.2–0.3em), 20–26px. Soft lead-in line: 'Instrument Serif' italic, large (64–110px). Body: 'Inter Tight' 500–600. CSS stacks: 'Inter Tight', Arial, sans-serif / 'JetBrains Mono', 'Courier New', monospace / 'Instrument Serif', Georgia, serif.",
+  "font_faces": [
+    {"family": "Inter Tight", "file": "fonts/inter-tight-latin-400-normal.woff2", "weight": 400, "style": "normal"},
+    {"family": "Inter Tight", "file": "fonts/inter-tight-latin-600-normal.woff2", "weight": 600, "style": "normal"},
+    {"family": "Inter Tight", "file": "fonts/inter-tight-latin-700-normal.woff2", "weight": 700, "style": "normal"},
+    {"family": "Inter Tight", "file": "fonts/inter-tight-latin-800-normal.woff2", "weight": 800, "style": "normal"},
+    {"family": "Inter Tight", "file": "fonts/inter-tight-latin-900-normal.woff2", "weight": 900, "style": "normal"},
+    {"family": "JetBrains Mono", "file": "fonts/jetbrains-mono-latin-400-normal.woff2", "weight": 400, "style": "normal"},
+    {"family": "JetBrains Mono", "file": "fonts/jetbrains-mono-latin-500-normal.woff2", "weight": 500, "style": "normal"},
+    {"family": "JetBrains Mono", "file": "fonts/jetbrains-mono-latin-700-normal.woff2", "weight": 700, "style": "normal"},
+    {"family": "Instrument Serif", "file": "fonts/instrument-serif-latin-400-normal.woff2", "weight": 400, "style": "normal"},
+    {"family": "Instrument Serif", "file": "fonts/instrument-serif-latin-400-italic.woff2", "weight": 400, "style": "italic"}
+  ],
+  "hard_rules": [
+    "Write the name as \"EASE AI\" (as on the logo). It is part of the E.A.S.E. family but has its own look — never use the E.A.S.E. Mental Math navy/teal or the GEC navy/gold here.",
+    "Recurring campaign system (keep it consistent across a campaign): logo top-left in its white rounded tile; top-right an orange 'FREE' pill + mono label such as 'LIVE AI WORKSHOP'; a bottom info band with the date and times in columns (big grotesk figure + small orange mono sub-label); an orange pill CTA 'REGISTER NOW →'.",
+    "Headlines: short, provocative, two-tone — cream (or ink on light) for the set-up, Signal Orange for the turn. A question or a 'gap' framing works well.",
+    "Imagery: cinematic photography graded to amber/orange and deep shadow — lone figures, screens, city light, data glow — or real-looking UI cards (browser, phone, agent checklist, workflow chips) as proof of what people can build. Generated people are anonymous, never presented as real attendees.",
+    "Times and dates must be exactly as supplied (workshops often list Melbourne, New Zealand and Bahrain times). Never invent venues, dates or prices.",
+    "Voice: direct, confident, inclusive ('for everyone — no matter your background'), never hype or fear-mongering beyond a gentle nudge. No 'unlock your potential'.",
+    "Logo: never stretch, recolour or redraw it; keep it on its white tile. (Current file is a placeholder cut from a poster — replace with the original in the Brand library.)"
+  ],
+  "logos": [
+    {"id": "logo-ease-ai", "file": "logo-ease-ai.png", "note": "EASE AI logo on its white tile (solid white background, aspect ~1.71:1). Placeholder cropped from a campaign poster — use at 170–240px wide, top-left, rounded corners via a wrapper with border-radius:18px and overflow:hidden."}
+  ]
+}

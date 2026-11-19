@@ -6,10 +6,24 @@ import time
 import uuid
 from pathlib import Path
 
+import os
+import shutil
+
 BASE = Path(__file__).resolve().parent
-DATA = BASE / "data" / "projects"
-BRANDS = BASE / "brands"
+# Everything that changes lives under DATA_DIR. Locally that's ./data; on Render it's the permanent disk (/data).
+DATA_DIR = Path(os.getenv("DATA_DIR") or (BASE / "data")).resolve()
+DATA = DATA_DIR / "projects"
 DATA.mkdir(parents=True, exist_ok=True)
+# Brand profiles are editable in the app (logos, references, guidelines), so they live on the data disk too.
+# The copies shipped with the app are only the starting point.
+BRANDS = DATA_DIR / "brands"
+SEED_BRANDS = BASE / "brands"
+if not BRANDS.exists():
+    shutil.copytree(SEED_BRANDS, BRANDS)
+else:
+    for d in SEED_BRANDS.iterdir():  # add brands that ship with a newer version of the app
+        if d.is_dir() and not (BRANDS / d.name).exists():
+            shutil.copytree(d, BRANDS / d.name)
 
 _lock = threading.RLock()
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")

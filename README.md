@@ -2,6 +2,12 @@
 
 **The AI creates. You review. You approve. Instagram publishes.**
 
+There are two ways to run it:
+- **Online for your team (recommended):** follow **DEPLOY-RENDER.md**. Everyone uses one link, nothing is installed, the admin connects OpenAI and Instagram inside the app, and team members just sign in.
+- **On one Windows computer:** follow section 1 below.
+
+In both cases you sign in first. The first person to open a new studio creates the admin account. OpenAI keys and Instagram accounts can be connected in **Settings → Connections**. The `.env` file is optional.
+
 Studio turns a brief and your photos into five or more genuinely different Instagram posts. Each post has a finished design, three captions and hashtags. You refine the one you like, edit its caption, approve it, and only then publish it to Instagram with one explicit click.
 
 ---
@@ -11,9 +17,11 @@ Studio turns a brief and your photos into five or more genuinely different Insta
 1. **Install Python** from https://www.python.org/downloads/. On the first installer screen, tick **"Add python.exe to PATH"**.
 2. **Unzip this folder**, for example to `Documents\creative-agency`.
 3. **Double-click `setup.bat`.** It installs everything: the renderer, the photo cut-out tool (about 200 MB on first use) and the public-link tool for publishing. When it finishes, Notepad opens the `.env` settings file.
-4. **Add your OpenAI key** (next section), save `.env`, and close Notepad.
-5. **Double-click `start.bat`.** Your browser opens at http://127.0.0.1:5000.
-6. Open **Setup & tests** in the app and run every test.
+4. Close Notepad (you can leave `.env` as it is; keys can be added in the app).
+5. **Double-click `start.bat`.** Your browser opens at http://127.0.0.1:5000. Create your admin account.
+6. In **Settings → Connections**, paste your OpenAI key. Then open **Setup & tests** and run every test.
+
+If Windows shows *"Smart App Control blocked a file"*: delete the extracted folder, right-click the **zip** → **Properties** → tick **Unblock** → OK, then extract again. "Log in with Instagram" needs the online (https) version. On a single computer, use the token method in section 3.
 
 ## 2. OpenAI (text and images)
 

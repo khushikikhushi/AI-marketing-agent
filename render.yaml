@@ -1,0 +1,26 @@
+# Render Blueprint: New -> Blueprint -> connect this repository -> Apply.
+services:
+  - type: web
+    name: studio
+    runtime: docker
+    plan: standard          # 2 GB RAM: image rendering + photo cut-outs need it
+    healthCheckPath: /api/auth/state
+    disk:
+      name: studio-data
+      mountPath: /data      # campaigns, images, brands, settings and accounts live here and survive deploys
+      sizeGB: 5
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true # encrypts saved keys and signs logins — never change it after first deploy
+      - key: TEXT_PROVIDER
+        value: openai
+      - key: OPENAI_TEXT_MODEL
+        value: gpt-5.6
+      - key: OPENAI_IMAGE_MODEL
+        value: gpt-image-2
+      - key: OPENAI_IMAGE_QUALITY
+        value: high
+      - key: OPENAI_REASONING_EFFORT
+        value: high
+      - key: REVIEW_ROUNDS
+        value: "3"

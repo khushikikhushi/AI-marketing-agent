@@ -23,8 +23,11 @@ def quality():
 
 
 def enabled():
-    k = os.getenv("OPENAI_API_KEY", "")
-    return os.getenv("IMAGE_GENERATION", "on").lower() != "off" and bool(k) and not k.startswith("paste")
+    import settings
+    k = settings.openai_key()
+    on = settings.get("image_generation")
+    on = (os.getenv("IMAGE_GENERATION", "on").lower() != "off") if on is None else bool(on)
+    return on and bool(k) and not k.startswith("paste")
 
 
 GUARD = (" Photographic and art-direction quality of a top commercial studio. IMPORTANT: absolutely no text, letters, numbers, "

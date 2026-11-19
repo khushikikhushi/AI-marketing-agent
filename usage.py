@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-LOG = BASE / "data" / "usage.jsonl"
+LOG = Path(os.getenv("DATA_DIR") or (BASE / "data")).resolve() / "usage.jsonl"
 _lock = threading.Lock()
 
 
@@ -18,7 +18,12 @@ def _price(name):
 
 
 def record(kind, provider, model, purpose, project=None, input_tokens=0, output_tokens=0, images=0, image_quality="", size=""):
-    entry = {"t": time.strftime("%Y-%m-%d %H:%M:%S"), "kind": kind, "provider": provider, "model": model,
+    try:
+        import llm
+        who = llm.current_user()
+    except Exception:
+        who = None
+    entry = {"t": time.strftime("%Y-%m-%d %H:%M:%S"), "kind": kind, "provider": provider, "model": model, "user": who,
              "purpose": purpose, "project": project, "input_tokens": int(input_tokens or 0),
              "output_tokens": int(output_tokens or 0), "images": int(images or 0), "quality": image_quality, "size": size}
     LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -42,7 +47,7 @@ def summary():
     """Totals by kind, by model and by campaign. Costs only where you've set prices in .env (prices change, so none are guessed)."""
     pin, pout, pimg = _price("PRICE_TEXT_INPUT_PER_1M"), _price("PRICE_TEXT_OUTPUT_PER_1M"), _price("PRICE_PER_IMAGE")
     tot = {"text_calls": 0, "input_tokens": 0, "output_tokens": 0, "image_calls": 0, "images": 0}
-    by_model, by_project, recent = {}, {}, []
+    by_model, by_project, by_user, recent = {}, {}, {}, []
     for e in entries():
         m = by_model.setdefault(f"{e['provider']} · {e['model']}", {"kind": e["kind"], "calls": 0, "input_tokens": 0, "output_tokens": 0, "images": 0})
         m["calls"] += 1
@@ -50,6 +55,10 @@ def summary():
         m["output_tokens"] += e["output_tokens"]
         m["images"] += e["images"]
         p = by_project.setdefault(e.get("project") or "—", {"text_tokens": 0, "images": 0})
+        uu = by_user.setdefault(e.get("user") or "—", {"text_tokens": 0, "images": 0, "calls": 0})
+        uu["calls"] += 1
+        uu["text_tokens"] += e["input_tokens"] + e["output_tokens"] if e["kind"] == "text" else 0
+        uu["images"] += e["images"]
         if e["kind"] == "text":
             tot["text_calls"] += 1
             tot["input_tokens"] += e["input_tokens"]
@@ -65,4 +74,4 @@ def summary():
         cost["text"] = round(tot["input_tokens"] / 1e6 * pin + tot["output_tokens"] / 1e6 * pout, 2)
     if pimg == pimg:
         cost["images"] = round(tot["images"] * pimg, 2)
-    return {"totals": tot, "cost": cost, "by_model": by_model, "by_project": by_project, "recent": recent[-40:][::-1]}
+    return {"totals": tot, "cost": cost, "by_model": by_model, "by_project": by_project, "by_user": by_user, "recent": recent[-40:][::-1]}

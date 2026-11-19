@@ -5,6 +5,7 @@ import json
 import os
 import threading
 
+import settings
 import usage
 
 _local = threading.local()
@@ -30,23 +31,34 @@ def text_model():
 
 
 def has_key():
-    k = os.getenv("ANTHROPIC_API_KEY" if provider() == "claude" else "OPENAI_API_KEY", "")
+    k = os.getenv("ANTHROPIC_API_KEY", "") if provider() == "claude" else settings.openai_key()
     return bool(k) and not k.startswith("paste")
+
+
+def set_user(email):
+    _local.user = email
+
+
+def current_user():
+    return getattr(_local, "user", None)
 
 
 # ---------------- OpenAI ----------------
 
 _openai = None
+_openai_key = None
 
 
 def openai_client():
-    global _openai
-    if _openai is None:
-        key = os.getenv("OPENAI_API_KEY", "")
-        if not key or key.startswith("paste"):
-            raise RuntimeError("No OpenAI API key found. Open the .env file, paste your key after OPENAI_API_KEY=, save, and restart the app.")
+    """Rebuilt automatically when the key is changed in Settings."""
+    global _openai, _openai_key
+    key = settings.openai_key()
+    if not key or key.startswith("paste"):
+        raise RuntimeError("No OpenAI API key yet. An admin can add it in Settings → Connections.")
+    if _openai is None or key != _openai_key:
         from openai import OpenAI
         _openai = OpenAI(api_key=key, timeout=900, max_retries=3)
+        _openai_key = key
     return _openai
 
 
@@ -164,12 +176,12 @@ def friendly_error(e):
     name, msg = type(e).__name__, str(e)
     low = msg.lower()
     if name == "AuthenticationError":
-        return "The API key was rejected. Check the key in the .env file and restart the app."
+        return "The API key was rejected. Check it in Settings → Connections (or the .env file if you run the studio on your own computer)."
     if name == "PermissionDeniedError" or "organization must be verified" in low or "verify" in low and "organization" in low:
         return ("Your OpenAI account doesn't have access to this model yet. Some models (including GPT Image) need "
                 "Organization Verification at platform.openai.com → Settings → Organization → General.")
     if name == "NotFoundError" or "model_not_found" in low or "does not exist" in low:
-        return "That model name isn't available to your account. Check OPENAI_TEXT_MODEL / OPENAI_IMAGE_MODEL in .env."
+        return "That model name isn't available to your account. Check OPENAI_TEXT_MODEL / OPENAI_IMAGE_MODEL in the server settings."
     if "insufficient_quota" in low or "credit balance" in low or "billing" in low:
         return "Your API account is out of credit. Add credit (platform.openai.com → Billing), then press Retry."
     if name == "RateLimitError":

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio — AI Creative Agency</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<aside class="side">
+  <div class="mark"><span class="mark-dot"></span>Studio<small>AI creative agency</small></div>
+  <button class="btn primary wide" data-nav="new">+ New creative campaign</button>
+  <nav>
+    <a data-nav="projects">Campaigns</a>
+    <a data-nav="favourites">Saved designs</a>
+    <a data-nav="drafts">Drafts &amp; publishing</a>
+    <a data-nav="brands">Brand library</a>
+    <a data-nav="usage" data-admin>Usage</a>
+    <a data-nav="setup" data-admin>Setup &amp; tests</a>
+    <a data-nav="settings">Settings</a>
+  </nav>
+  <div class="side-foot" id="modelInfo"></div>
+</aside>
+<main id="main"></main>
+<div id="modal" class="modal hidden"></div>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -31,8 +31,7 @@ if errorlevel 1 echo  Could not download cloudflared. Publishing to Instagram ne
 if not exist .env copy .env.example .env >nul
 echo.
 echo  Setup complete!
-echo  Notepad will now open the .env file: paste your OpenAI API key after OPENAI_API_KEY= and save.
+echo  Next: double-click start.bat, create your admin account, and add your OpenAI key in Settings.
 echo  Then double-click start.bat
 echo.
 pause
-notepad .env

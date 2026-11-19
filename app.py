@@ -1,6 +1,9 @@
 """AI Creative Agency — run with:  python app.py   then open http://127.0.0.1:5000"""
 import io
 import json
+import secrets
+import shutil
+import time as _time
 import os
 import re
 import threading
@@ -15,9 +18,11 @@ from dotenv import load_dotenv
 BASE = Path(__file__).resolve().parent
 load_dotenv(BASE / ".env")
 
-from flask import Flask, abort, jsonify, request, send_file, send_from_directory  # noqa: E402
+from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory, session  # noqa: E402
 from PIL import Image, ImageOps  # noqa: E402
 
+import auth  # noqa: E402
+import settings  # noqa: E402
 import agent  # noqa: E402
 import imagegen  # noqa: E402
 import instagram  # noqa: E402
@@ -29,6 +34,12 @@ import usage  # noqa: E402
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
+app.secret_key = settings.secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  SESSION_COOKIE_SECURE=settings.hosted(), PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 14)
+if settings.hosted():
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 pool = ThreadPoolExecutor(max_workers=3)  # how many designs the AI works on at the same time
 PORT = int(os.getenv("PORT", "5000"))
@@ -216,7 +227,8 @@ def make_generated_images(pid, cid, out, assets):
     return json.loads(blob)
 
 
-def run_safely(pid, cid, fn, retry_action):
+def run_safely(pid, cid, fn, retry_action, user=None):
+    llm.set_user(user)
     try:
         fn()
     except Exception as e:  # show a friendly error on the card, keep the details in the terminal
@@ -251,7 +263,7 @@ def start_designs(pid, cids):
     for cid in cids:
         set_concept(pid, cid, status="pending", step="Queued…", error=None)
         pool.submit(run_safely, pid, cid, lambda cid=cid: produce(pid, cid, fmt, label="Original design"),
-                    {"action": "regenerate"})
+                    {"action": "regenerate"}, llm.current_user())
 
 
 def prepare_cutouts(pid):
@@ -293,8 +305,9 @@ def prepare_cutouts(pid):
     store.update(pid, fn)
 
 
-def run_concepting(pid, count, avoid_existing=False):
+def run_concepting(pid, count, avoid_existing=False, user=None):
     llm.set_project(pid)
+    llm.set_user(user)
     try:
         prepare_cutouts(pid)
         project = store.load(pid)
@@ -348,9 +361,11 @@ def brand_file(slug, fname):
 
 @app.get("/api/config")
 def config():
+    accts = settings.ig_accounts()
     return jsonify(has_key=llm.has_key(), provider=llm.provider(), model=llm.text_model(),
                    image_generation=imagegen.enabled(), image_model=imagegen.model() if imagegen.enabled() else None,
-                   instagram=instagram.configured(), ig_test_mode=instagram.test_mode(),
+                   instagram=bool(accts) or instagram.configured(), ig_test_mode=instagram.test_mode(),
+                   ig_accounts={k: v.get("username") for k, v in accts.items()}, user=current(), hosted=settings.hosted(),
                    formats=render.FORMATS, tones=TONES, objectives=OBJECTIVES,
                    brands=[{k: b.get(k) for k in ("slug", "name", "full_name", "default_format", "summary", "draft")} | {"logo": b["logos"][0]["file"]}
                            for b in store.list_brands()])
@@ -471,7 +486,7 @@ def create_project():
                "uploads": uploads, "status": "concepting", "director_note": "", "error": None,
                "concepts": [], "selected": None}
     store.save(project)
-    threading.Thread(target=run_concepting, args=(pid, brief["count"]), daemon=True).start()
+    threading.Thread(target=run_concepting, args=(pid, brief["count"]), kwargs=dict(user=llm.current_user()), daemon=True).start()
     return jsonify(id=pid)
 
 
@@ -499,7 +514,7 @@ def retry_project(pid):
             do_action(pid, cid, store.find_concept(p, cid).get("retry") or {"action": "regenerate"})
         return jsonify(ok=True)
     store.update(pid, lambda q: q.update(status="concepting", error=None))
-    threading.Thread(target=run_concepting, args=(pid, p["brief"]["count"]), daemon=True).start()
+    threading.Thread(target=run_concepting, args=(pid, p["brief"]["count"]), kwargs=dict(user=llm.current_user()), daemon=True).start()
     return jsonify(ok=True)
 
 
@@ -507,7 +522,7 @@ def retry_project(pid):
 def more_concepts(pid):
     n = max(1, min(5, int((request.json or {}).get("count", 3))))
     store.update(pid, lambda q: q.update(status="concepting", error=None))
-    threading.Thread(target=run_concepting, args=(pid, n, True), daemon=True).start()
+    threading.Thread(target=run_concepting, args=(pid, n, True), kwargs=dict(user=llm.current_user()), daemon=True).start()
     return jsonify(ok=True)
 
 
@@ -574,7 +589,7 @@ def do_action(pid, cid, body):
         return "Unknown action."
 
     set_concept(pid, cid, status="pending", step="Queued…", error=None)
-    pool.submit(run_safely, pid, cid, job, body)
+    pool.submit(run_safely, pid, cid, job, body, llm.current_user())
     return None
 
 
@@ -635,6 +650,9 @@ def download(pid, cid, index):
 # ======================================================================
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost"}
+OPEN_PATHS = ("/public/", "/static/", "/brand-assets/")
+OPEN_API = {"/api/auth/state", "/api/auth/login", "/api/auth/setup-admin"}
+ADMIN_API = ("/api/settings", "/api/users", "/api/diagnostics/")
 
 
 def _is_remote():
@@ -642,19 +660,272 @@ def _is_remote():
     return host not in LOCAL_HOSTS or "Cf-Ray" in request.headers or "Cf-Connecting-Ip" in request.headers
 
 
+def current():
+    uid = session.get("uid")
+    u = auth.find(uid) if uid else None
+    return auth.public(u) if u else None
+
+
 @app.before_request
 def guard():
-    if _is_remote() and not request.path.startswith("/public/"):
+    path = request.path
+    # Running on your own computer with a temporary public link: only the approved image may be reached from outside.
+    if not settings.hosted() and _is_remote() and not path.startswith("/public/"):
         abort(403)
+    if path.startswith(OPEN_PATHS) or path == "/" or path in OPEN_API:
+        return None
+    u = current()
+    if not u:
+        if path.startswith("/api/"):
+            return jsonify(error="Please sign in.", login=True), 401
+        return redirect("/")
+    # Mutating API calls must come from the app itself (blocks cross-site request forgery).
+    if path.startswith("/api/") and request.method not in ("GET", "HEAD") and request.headers.get("X-Studio") != "1":
+        return jsonify(error="Request blocked."), 403
+    admin_only = path.startswith(ADMIN_API) or (path.startswith("/api/brands/") and request.method != "GET") \
+        or path.startswith("/auth/instagram")
+    if admin_only and u["role"] != "admin" and not (path == "/api/settings" and request.method == "GET"):
+        return jsonify(error="Only an admin can do that."), 403
+    llm.set_user(u["email"])
+    return None
+
+
+@app.after_request
+def no_store(resp):
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+# ---------------- sign in ----------------
+
+@app.get("/api/auth/state")
+def auth_state():
+    u = current()
+    needs = bool(u and u["role"] == "admin" and not llm.has_key())
+    return jsonify(has_users=auth.has_users(), user=u, needs_setup=needs, hosted=settings.hosted())
+
+
+@app.post("/api/auth/setup-admin")
+def setup_admin():
+    if auth.has_users():
+        return jsonify(error="This studio already has an admin."), 409
+    b = request.json or {}
+    try:
+        u = auth.create(b.get("email"), b.get("name"), b.get("password", ""), role="admin")
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    session.clear()
+    session.permanent = True
+    session["uid"] = u["id"]
+    return jsonify(user=u)
+
+
+@app.post("/api/auth/login")
+def do_login():
+    b = request.json or {}
+    try:
+        u = auth.login(b.get("email"), b.get("password", ""))
+    except ValueError as e:
+        return jsonify(error=str(e)), 401
+    session.clear()
+    session.permanent = True
+    session["uid"] = u["id"]
+    return jsonify(user=u)
+
+
+@app.post("/api/auth/logout")
+def do_logout():
+    session.clear()
+    return jsonify(ok=True)
+
+
+@app.post("/api/auth/password")
+def change_password():
+    b = request.json or {}
+    u = current()
+    try:
+        auth.login(u["email"], b.get("current", ""))
+        return jsonify(user=auth.set_password(u["id"], b.get("new", "")))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+
+# ---------------- team (admin) ----------------
+
+@app.get("/api/users")
+def users_list():
+    return jsonify(auth.all_users())
+
+
+@app.post("/api/users")
+def users_add():
+    b = request.json or {}
+    temp = secrets.token_urlsafe(9)
+    try:
+        u = auth.create(b.get("email"), b.get("name"), temp, role="admin" if b.get("role") == "admin" else "member", must_change=True)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    return jsonify(user=u, temp_password=temp)
+
+
+@app.post("/api/users/<uid>/reset")
+def users_reset(uid):
+    temp = secrets.token_urlsafe(9)
+    auth.set_password(uid, temp)
+    return jsonify(temp_password=temp)
+
+
+@app.delete("/api/users/<uid>")
+def users_remove(uid):
+    if uid == current()["id"]:
+        return jsonify(error="You can't remove yourself."), 400
+    try:
+        auth.remove(uid)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    return jsonify(ok=True)
+
+
+# ---------------- connections (admin) ----------------
+
+def _redirect_uri():
+    base = settings.public_base_url() or request.host_url.rstrip("/")
+    return base + "/auth/instagram/callback"
+
+
+@app.get("/api/settings")
+def get_settings():
+    app_id, app_secret = settings.meta_app()
+    now = _time.time()
+    accts = {}
+    for b in store.list_brands():
+        a = settings.ig_accounts().get(b["slug"])
+        accts[b["slug"]] = {"brand": b["name"], "connected": bool(a),
+                            **({"username": a.get("username"), "account_type": a.get("account_type"), "picture": a.get("picture"),
+                                "days_left": int((a.get("expires_at", 0) - now) / 86400), "connected_at": a.get("connected_at"),
+                                "connected_by": a.get("connected_by")} if a else {})}
+    key = settings.openai_key()
+    return jsonify(openai=settings.masked(key), openai_from_env=bool(key) and not settings.get_secret("openai_api_key"),
+                   image_generation=imagegen.enabled(), meta_app_id=app_id, meta_secret=bool(app_secret),
+                   redirect_uri=_redirect_uri(), instagram=accts, ig_test_mode=settings.ig_test_mode(),
+                   hosted=settings.hosted(), public_base=settings.public_base_url())
+
+
+@app.put("/api/settings/openai")
+def put_openai():
+    key = ((request.json or {}).get("key") or "").strip()
+    if not key.startswith("sk-") or len(key) < 20:
+        return jsonify(error="That doesn't look like an OpenAI API key (they start with sk-)."), 400
+    try:
+        from openai import OpenAI
+        OpenAI(api_key=key, timeout=30, max_retries=1).models.list()  # free check: no tokens used
+    except Exception as e:
+        return jsonify(error=llm.friendly_error(e)), 400
+    settings.put_secret("openai_api_key", key)
+    return jsonify(ok=True, masked=settings.masked(key))
+
+
+@app.delete("/api/settings/openai")
+def del_openai():
+    settings.put_secret("openai_api_key", "")
+    return jsonify(ok=True)
+
+
+@app.put("/api/settings/meta")
+def put_meta():
+    b = request.json or {}
+    app_id = re.sub(r"\D", "", str(b.get("app_id", "")))
+    if not app_id:
+        return jsonify(error="Enter the Instagram App ID (numbers only)."), 400
+    settings.put("meta_app_id", app_id)
+    if b.get("app_secret"):
+        settings.put_secret("meta_app_secret", str(b["app_secret"]).strip())
+    return jsonify(ok=True)
+
+
+@app.put("/api/settings/flags")
+def put_flags():
+    b = request.json or {}
+    if "ig_test_mode" in b:
+        if b["ig_test_mode"] is False and b.get("confirm") != "GO LIVE":
+            return jsonify(error="Type GO LIVE to confirm."), 400
+        settings.put("ig_test_mode", bool(b["ig_test_mode"]))
+    if "image_generation" in b:
+        settings.put("image_generation", bool(b["image_generation"]))
+    return jsonify(ok=True)
+
+
+@app.get("/auth/instagram/start")
+def ig_start():
+    brand = request.args.get("brand", "")
+    if brand not in {b["slug"] for b in store.list_brands()}:
+        abort(400)
+    app_id, app_secret = settings.meta_app()
+    if not (app_id and app_secret):
+        return redirect("/#/settings")
+    state = secrets.token_urlsafe(24)
+    session["ig_oauth"] = {"state": state, "brand": brand, "at": _time.time()}
+    return redirect(instagram.authorize_url(app_id, _redirect_uri(), state))
+
+
+@app.get("/auth/instagram/callback")
+def ig_callback():
+    st = session.pop("ig_oauth", None) or {}
+    if not st or request.args.get("state") != st.get("state") or _time.time() - st.get("at", 0) > 900:
+        return redirect("/#/settings?ig=expired")
+    if request.args.get("error"):
+        return redirect("/#/settings?ig=cancelled")
+    app_id, app_secret = settings.meta_app()
+    try:
+        tok, info = instagram.connect_with_code(app_id, app_secret, _redirect_uri(), request.args.get("code", ""))
+    except Exception as e:
+        traceback.print_exc()
+        settings.put("last_ig_error", friendly(e))
+        return redirect("/#/settings?ig=failed")
+    info.update(connected_at=store.now(), connected_by=current()["email"])
+    settings.save_ig_account(st["brand"], tok, info)
+    settings.put("last_ig_error", None)
+    return redirect(f"/#/settings?ig=connected")
+
+
+@app.get("/api/settings/last-error")
+def last_ig_error():
+    return jsonify(error=settings.get("last_ig_error") or "")
+
+
+@app.delete("/api/settings/instagram/<brand>")
+def ig_disconnect(brand):
+    settings.remove_ig_account(store.safe(brand))
+    return jsonify(ok=True)
+
+
+def refresh_instagram_tokens():
+    """Keep connections alive: renew any token with less than 20 days left (Instagram allows renewal after 24h)."""
+    for brand, a in settings.ig_accounts().items():
+        try:
+            left = a.get("expires_at", 0) - _time.time()
+            if 0 < left < 20 * 86400 and left < 60 * 86400 - 86400:
+                tok, exp = instagram.refresh(settings.ig_token(brand))
+                a["expires_at"] = exp
+                a["refreshed_at"] = store.now()
+                settings.save_ig_account(brand, tok, a)
+                print(f"  Renewed Instagram connection for {brand}")
+        except Exception:
+            traceback.print_exc()
+
+
+def _refresher():
+    while True:
+        refresh_instagram_tokens()
+        _time.sleep(6 * 3600)
 
 
 # ======================================================================
 #  APPROVAL & PUBLISHING — the AI creates, you review, you approve, Instagram publishes
 # ======================================================================
-
-import secrets  # noqa: E402
-import shutil  # noqa: E402
-import time as _time  # noqa: E402
 
 _publish_lock = threading.Lock()
 _public_tokens = {}  # token -> (pid, aid, expires)
@@ -789,13 +1060,17 @@ def start_publish(pid, aid, body):
         if a.get("already_published") and not body.get("publish_again"):
             return jsonify(error="This exact design was already published once. Tick 'publish it again' to confirm."), 409
         test = instagram.test_mode()
+        if not test and not instagram.configured(p["brief"]["brand"]):
+            return jsonify(error="This brand's Instagram account isn't connected. An admin can connect it in Settings."), 409
 
         def fn(q):
             x = _approval(q, aid)
             x["state"] = "publishing"
             x["test"] = test
             x["progress"] = "Starting…"
-            _log(x, "APPROVE & PUBLISH clicked", "Test mode — nothing will be sent to Instagram" if test else "Live publishing")
+            x["published_by"] = llm.current_user()
+            _log(x, "APPROVE & PUBLISH clicked", ("Test mode — nothing will be sent to Instagram" if test else "Live publishing")
+                 + (f" · by {llm.current_user()}" if llm.current_user() else ""))
         store.update(pid, fn)
     threading.Thread(target=run_publish, args=(pid, aid, test), daemon=True).start()
     return jsonify(store.load(pid))
@@ -808,9 +1083,12 @@ def run_publish(pid, aid, test):
         store.update(pid, fn)
 
     token = None
+    used_tunnel = False
     try:
         p = store.load(pid)
         a = _approval(p, aid)
+        brand = p["brief"]["brand"]
+        tok = instagram.token(brand)
         prog("Preparing JPEG files (Instagram accepts JPEG only)…")
         adir = store.project_dir(pid) / "approvals" / aid
         jpgs = []
@@ -823,12 +1101,17 @@ def run_publish(pid, aid, test):
         token = secrets.token_urlsafe(24)
         _public_tokens[token] = (pid, aid, _time.time() + 1800)
 
-        if test and not tunnel.executable() and not os.getenv("PUBLIC_BASE_URL"):
+        public = settings.public_base_url()
+        if test and not public and not tunnel.executable():
             urls = []
             note = "Public link not tested (cloudflared not installed)."
         else:
-            prog("Opening the temporary public link…")
-            base = tunnel.start(PORT)
+            if public:
+                base = public
+            else:
+                prog("Opening the temporary public link…")
+                base = tunnel.start(PORT)
+                used_tunnel = True
             urls = [f"{base}/public/{token}/{n}" for n in jpgs]
             prog("Checking Instagram will be able to download the image…")
             import requests
@@ -838,9 +1121,9 @@ def run_publish(pid, aid, test):
             note = "Public link verified: Instagram would be able to fetch the image."
 
         if test:
-            if instagram.configured():
-                prog("Checking your Instagram account (read-only)…")
-                acc = instagram.account()
+            if tok:
+                prog("Checking the Instagram account (read-only)…")
+                acc = instagram.account(tok)
                 note += f" Connected account: @{acc.get('username')} ({acc.get('account_type')})."
             def fn(q):
                 x = _approval(q, aid)
@@ -850,7 +1133,8 @@ def run_publish(pid, aid, test):
             store.update(pid, fn)
             return
 
-        res = instagram.publish(urls, caption, a["format"], prog)
+        res = instagram.publish(urls, caption, a["format"], prog, tok)
+        res["account"] = (settings.ig_accounts().get(brand) or {}).get("username")
 
         def fn(q):
             x = _approval(q, aid)
@@ -876,7 +1160,7 @@ def run_publish(pid, aid, test):
     finally:
         if token:
             _public_tokens.pop(token, None)
-        if not os.getenv("KEEP_TUNNEL"):
+        if used_tunnel and not os.getenv("KEEP_TUNNEL"):
             tunnel.stop()
 
 
@@ -893,10 +1177,15 @@ def public_image(token, name):
 
 @app.get("/api/instagram/account")
 def ig_account():
-    if not instagram.configured():
+    brand = request.args.get("brand") or None
+    if not instagram.configured(brand):
         return jsonify(connected=False, test_mode=instagram.test_mode())
+    saved = settings.ig_accounts().get(brand or "") if brand else None
+    if saved:  # avoid an Instagram call every time the approval screen opens
+        return jsonify(connected=True, test_mode=instagram.test_mode(), account={"username": saved.get("username"),
+                       "account_type": saved.get("account_type"), "picture": saved.get("picture"), "id": saved.get("user_id")})
     try:
-        return jsonify(connected=True, test_mode=instagram.test_mode(), account=instagram.account())
+        return jsonify(connected=True, test_mode=instagram.test_mode(), account=instagram.account(instagram.token(brand)))
     except Exception as e:
         return jsonify(connected=False, test_mode=instagram.test_mode(), error=friendly(e))
 
@@ -983,18 +1272,20 @@ def diagnostics():
             renderer = Path(pw.chromium.executable_path).exists()
     except Exception:
         renderer = False
-    okey = os.getenv("OPENAI_API_KEY", "")
+    okey = settings.openai_key()
     return jsonify(
         provider=llm.provider(), text_model=llm.text_model(), image_model=imagegen.model(), image_quality=imagegen.quality(),
         openai_key=bool(okey) and not okey.startswith("paste"), claude_key=bool(os.getenv("ANTHROPIC_API_KEY", "").strip()),
         image_generation=imagegen.enabled(), renderer=renderer, cutouts=importlib.util.find_spec("rembg") is not None,
-        cloudflared=bool(tunnel.executable()) or bool(os.getenv("PUBLIC_BASE_URL")), instagram=instagram.configured(),
+        cloudflared=bool(tunnel.executable()) or bool(settings.public_base_url()), hosted=settings.hosted(),
+        instagram=bool(settings.ig_accounts()) or instagram.configured(),
+        ig_accounts={k: v.get("username") for k, v in settings.ig_accounts().items()},
         ig_test_mode=instagram.test_mode(), review_rounds=MAX_REVIEWS,
         brands=[{"slug": b["slug"], "name": b["name"], "logos": len(b["logos"]), "references": len(b.get("references", [])),
                  "fonts": len(b.get("font_faces") or []), "guidelines_chars": len(b.get("guidelines", ""))} for b in store.list_brands()])
 
 
-TESTS_DIR = BASE / "data" / "tests"
+TESTS_DIR = store.DATA_DIR / "tests"
 
 
 @app.post("/api/diagnostics/<name>")
@@ -1046,25 +1337,35 @@ def run_test(name):
             return jsonify(ok=True, detail="Each brand's logo, colours and typeface rendered from its own profile.", images=results,
                            seconds=round(_time.time() - t0, 1))
         if name == "instagram":
-            acc = instagram.account()
-            lim = acc.get("limit") or {}
-            return jsonify(ok=True, detail=f"Connected to @{acc.get('username')} ({acc.get('account_type')}). "
-                                           f"Publishing quota used: {lim.get('used', '?')}/{lim.get('total', '?')} in 24h. Read-only check — nothing posted.",
-                           seconds=round(_time.time() - t0, 1))
+            lines, ok = [], True
+            targets = list(settings.ig_accounts().keys()) or ([None] if instagram.configured() else [])
+            if not targets:
+                return jsonify(ok=False, detail="No Instagram account is connected yet (Settings → Connections).")
+            for brand in targets:
+                try:
+                    acc = instagram.account(instagram.token(brand))
+                    lim = acc.get("limit") or {}
+                    lines.append(f"{brand or 'default'}: @{acc.get('username')} ({acc.get('account_type')}), quota {lim.get('used', '?')}/{lim.get('total', '?')} in 24h")
+                except Exception as e:
+                    ok = False
+                    lines.append(f"{brand or 'default'}: {friendly(e)}")
+            return jsonify(ok=ok, detail=" · ".join(lines) + ". Read-only check — nothing posted.", seconds=round(_time.time() - t0, 1))
         if name == "tunnel":
             import requests
             tok = secrets.token_urlsafe(16)
             probe = TESTS_DIR / "probe.jpg"
             Image.new("RGB", (64, 64), (255, 106, 19)).save(probe, "JPEG")
             _public_tokens[tok] = ("__probe__", "", _time.time() + 120)
+            hosted_base = settings.public_base_url()
             try:
-                base = tunnel.start(PORT)
+                base = hosted_base or tunnel.start(PORT)
                 r = requests.get(f"{base}/public/{tok}/probe.jpg", timeout=30)
-                r2 = requests.get(f"{base}/api/config", timeout=30)
+                r2 = requests.get(f"{base}/api/projects", timeout=30)
             finally:
                 _public_tokens.pop(tok, None)
-                tunnel.stop()
-            ok = r.status_code == 200 and r2.status_code == 403
+                if not hosted_base:
+                    tunnel.stop()
+            ok = r.status_code == 200 and r2.status_code in (401, 403)
             return jsonify(ok=ok, detail=f"Public link {'works' if r.status_code == 200 else 'FAILED (HTTP %s)' % r.status_code}; "
                                          f"the rest of the app is {'blocked from the internet ✓' if r2.status_code == 403 else 'NOT blocked — do not publish!'}",
                            seconds=round(_time.time() - t0, 1))
@@ -1079,8 +1380,23 @@ def test_file(name):
     return send_from_directory(TESTS_DIR, name)
 
 
-if __name__ == "__main__":
+_started = False
+
+
+def startup():
+    """Runs once per server process (both `python app.py` and gunicorn on Render)."""
+    global _started
+    if _started:
+        return
+    _started = True
     store.recover_interrupted()
+    threading.Thread(target=_refresher, daemon=True).start()
+
+
+if os.getenv("STUDIO_AUTOSTART", "1") == "1":
+    startup()
+
+if __name__ == "__main__":
     port = PORT
     url = f"http://127.0.0.1:{port}"
     print(f"\n  Studio is running at {url}  (text AI: {llm.provider()} {llm.text_model()}; "

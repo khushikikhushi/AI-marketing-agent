@@ -1,0 +1,27 @@
+{
+  "slug": "ease",
+  "name": "E.A.S.E.",
+  "full_name": "E.A.S.E. — EduArty Skills of Eminence",
+  "default_format": "portrait",
+  "summary": "Master education brand. E.A.S.E. Mental Math is its programme (\"Think Faster. Calculate Smarter.\"). Clean, white-led, premium, credible for parents and schools, energetic for children without being childish.",
+  "colours": [
+    {"name": "Paper White", "hex": "#FFFFFF", "use": "Primary background, ~60% of layout"},
+    {"name": "Deep Navy", "hex": "#00245C", "use": "Headlines, authority, dark backgrounds, ~25%"},
+    {"name": "Vivid Teal", "hex": "#14B8B4", "use": "Highlights, icons, CTAs, progress cues, ~10%"},
+    {"name": "Charcoal", "hex": "#1B1A17", "use": "Body copy, neutral info, ~5%"}
+  ],
+  "fonts": "Calibri (CSS: font-family: Calibri, Carlito, sans-serif). Bold for display/headlines, Semibold/Regular for support. No decorative, script or cartoon fonts.",
+  "hard_rules": [
+    "Write the name as \"E.A.S.E.\" and the programme as \"E.A.S.E. Mental Math\" — never \"Ease Mental Maths\" or \"EASE Math Academy\".",
+    "Never place \"Mental Math\" inside the logo artwork; set it as separate type beside/below the logo.",
+    "Mental Math communication stays in Navy / Teal / White (+ Charcoal text). Do not use every multicoloured tree colour in layouts. No day-specific accent colours.",
+    "Logo: never stretch, recolour, rotate, add shadows/glows/outlines, or put it on busy photography. Keep clear space at least the height of the capital E (~a third of the logo height) on all sides.",
+    "Default social format 1080x1350 (4:5) with a clearly reserved area for the E.A.S.E. logo and strong white space.",
+    "Sentence case for headings; ALL CAPS only for short labels such as MENTAL MATH.",
+    "Avoid: cartoonish visuals, floating numbers everywhere, 'genius child' imagery, rainbow overload, hype claims like 'make your child a maths genius'. Prefer measurable outcomes: speed, accuracy, concentration, confidence.",
+    "Geometric angular crops and subtle polygon motifs inspired by the E.A.S.E. tree are on-brand."
+  ],
+  "logos": [
+    {"id": "logo-ease", "file": "logo-ease.png", "note": "Primary master logo (geometric tree + E.A.S.E. wordmark + descriptor). Transparent PNG, 1014x362 (aspect 2.8:1). Dark wordmark — use on white or very light backgrounds only. Recommended width 300–420px on a 1080px post."}
+  ]
+}

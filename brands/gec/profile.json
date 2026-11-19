@@ -1,0 +1,31 @@
+{
+  "slug": "gec",
+  "name": "GEC",
+  "full_name": "GEC — Global Excellence Challenge (an E.A.S.E. programme)",
+  "default_format": "square",
+  "summary": "Premium, world-class academic competition brand with the Clocket timed practice app. Prestigious, energetic, precise, global yet personal. Navy dominant, gold accent.",
+  "colours": [
+    {"name": "GEC Royal Navy", "hex": "#0D245C", "use": "Dominant brand colour: backgrounds, headers, primary CTAs"},
+    {"name": "Championship Gold", "hex": "#C9A84C", "use": "Accent: headlines on navy, highlights, dividers, icons, borders. Never small text."},
+    {"name": "Pure White", "hex": "#FFFFFF", "use": "Content background, body text on navy"},
+    {"name": "Ghost White", "hex": "#F5F7FC", "use": "Light backgrounds"},
+    {"name": "Pale Navy", "hex": "#E8EEF8", "use": "Table/panel highlights"},
+    {"name": "Charcoal", "hex": "#2C2C2C", "use": "Body text on light backgrounds (never pure black)"}
+  ],
+  "fonts": "Calibri (CSS: font-family: Calibri, Carlito, 'Trebuchet MS', Arial, sans-serif). Monospace for data only: 'Courier New'. Headings 1.1–1.2 line height, body 1.4–1.6. Left-aligned, never justified. Titles on dark backgrounds: white or gold only.",
+  "hard_rules": [
+    "First mention: \"Global Excellence Challenge\", then \"GEC\". Never \"Global Excellence\" or \"GEC Challenge\".",
+    "The app is \"Clocket\" exactly — never clocket, CLOCKET or The Clocket App.",
+    "Participants are \"Mathletes\" (or Spell Bees, Young Scientists etc.) — avoid students/kids/participants in copy.",
+    "Rounds are Qualifier, Semi-Final, Grand Final — never Round 1 / Stage 1 / Level 1.",
+    "Default social: 1:1 square, navy background, gold headline, white body text. Always include the GEC or Clocket logo.",
+    "Never introduce colours outside the palette. Never use gold as small text.",
+    "Logo: never stretch, recolour, rotate or add shadows/outlines/effects; never on busy or low-contrast backgrounds; clear space at least the height of the G; minimum 80px wide on screen.",
+    "Voice: authoritative, energetic, inclusive, precise; encouraging, direct, celebratory, motivating. Never intimidating, elitist, vague, overly casual or boastful.",
+    "Avoid making every post look like a school advertisement or textbook illustration — exciting, modern, inspiring educational marketing."
+  ],
+  "logos": [
+    {"id": "logo-gec", "file": "logo-gec.png", "note": "Primary GEC logo (globe + open book, GEC wordmark with clock in the E, 'GLOBAL EXCELLENCE CHALLENGE'). IMPORTANT: it has a solid WHITE background baked in (not transparent), aspect ~1.12:1. On navy layouts, place it inside a clean white badge/panel (rounded rectangle or circle with generous padding) — never let a white box look accidental. Recommended width 180–300px."},
+    {"id": "logo-clocket", "file": "logo-clocket.png", "note": "Clocket app logo (gold stopwatch, navy face, 'CLOCKET Your GEC Practice App'). Solid WHITE background baked in, aspect ~0.83:1. Same white-badge treatment on dark backgrounds. Use when the post is about practice or the app."}
+  ]
+}
