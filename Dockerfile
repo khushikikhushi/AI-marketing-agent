@@ -1,5 +1,5 @@
 # Studio — container for Render (free or paid) or any Docker host
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 ARG INSTALL_CUTOUTS=0
 ENV PYTHONUNBUFFERED=1 \
