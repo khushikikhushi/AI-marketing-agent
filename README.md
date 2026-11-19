@@ -3,7 +3,7 @@
 **The AI creates. You review. You approve. Instagram publishes.**
 
 There are two ways to run it:
-- **Online for your team (recommended):** follow **DEPLOY-RENDER.md**. Everyone uses one link, nothing is installed, the admin connects OpenAI and Instagram inside the app, and team members just sign in.
+- **Online for your team, free (recommended):** follow **DEPLOY-RENDER.md** (Render's free plan plus free Supabase storage). Everyone uses one link, nothing is installed, the admin connects OpenAI and Instagram inside the app, and team members just sign in.
 - **On one Windows computer:** follow section 1 below.
 
 In both cases you sign in first. The first person to open a new studio creates the admin account. OpenAI keys and Instagram accounts can be connected in **Settings → Connections**. The `.env` file is optional.
@@ -98,7 +98,10 @@ Notes:
 | `llm.py` | Connects to OpenAI (or Claude) and records usage |
 | `imagegen.py` | OpenAI image generation and editing, with caching so identical requests are never paid twice |
 | `instagram.py` | Official Instagram publishing |
-| `tunnel.py` | The temporary public link for publishing |
+| `tunnel.py` | The temporary public link for publishing (only when running on your own computer) |
+| `cloudsync.py` | Keeps data safe in Supabase when the server's disk is temporary (Render free) |
+| `auth.py`, `settings.py` | Team sign-in, and encrypted keys and connections |
+| `render.yaml` / `render.paid.yaml` | Render setup: free (default) or paid |
 | `render.py` | Turns designs into exact-size PNGs |
 | `usage.py`, `store.py` | Usage log, campaigns and brands on disk |
 | `brands/` | Brand profiles, guidelines, logos, fonts and references |

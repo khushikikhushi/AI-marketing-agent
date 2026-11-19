@@ -820,5 +820,5 @@ async function changePw(e) { e.preventDefault(); try { await api('/api/auth/pass
 /* ------------------------------------------------------------------ boot */
 (async function boot() {
   try { await showAuth(); }
-  catch (e) { main.innerHTML = `<div class="banner">Couldn't reach the studio server. ${esc(e.message)}</div>`; }
+  catch (e) { document.body.classList.add('authmode'); main.innerHTML = `<div class="authbox"><h2>The studio can't open right now</h2><p class="sub">${esc(e.message)}</p><button class="btn primary" onclick="location.reload()">Try again</button></div>`; }
 })();

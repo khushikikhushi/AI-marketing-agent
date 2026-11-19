@@ -22,6 +22,7 @@ from flask import Flask, abort, jsonify, redirect, request, send_file, send_from
 from PIL import Image, ImageOps  # noqa: E402
 
 import auth  # noqa: E402
+import cloudsync  # noqa: E402
 import settings  # noqa: E402
 import agent  # noqa: E402
 import imagegen  # noqa: E402
@@ -41,7 +42,9 @@ if settings.hosted():
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-pool = ThreadPoolExecutor(max_workers=3)  # how many designs the AI works on at the same time
+LOW_MEMORY = os.getenv("LOW_MEMORY", "").lower() in ("1", "true", "yes")
+# How many designs the AI works on at the same time (1 on Render's free 512 MB plan).
+pool = ThreadPoolExecutor(max_workers=1 if LOW_MEMORY else 3)
 PORT = int(os.getenv("PORT", "5000"))
 
 ALLOWED_IMG = {".jpg", ".jpeg", ".png", ".webp"}
@@ -91,7 +94,7 @@ def fonts_for(brand):
 
 
 def png_paths(pid, version):
-    return [store.project_dir(pid) / p for p in version.get("pngs", [])]
+    return [cloudsync.ensure(store.project_dir(pid) / p) for p in version.get("pngs", [])]
 
 
 def set_concept(pid, cid, **fields):
@@ -274,6 +277,8 @@ def prepare_cutouts(pid):
     if not todo:
         return
     try:
+        if LOW_MEMORY or os.getenv("ENABLE_CUTOUTS", "1") == "0":
+            raise ImportError("cut-outs are off on low-memory servers")
         from rembg import new_session, remove
     except Exception:
         store.update(pid, lambda p: [u.setdefault("cutout", None) for u in p.get("uploads", [])])
@@ -283,7 +288,7 @@ def prepare_cutouts(pid):
     results = {}
     for u in todo:
         try:
-            im = Image.open(updir(pid) / u["file"]).convert("RGB")
+            im = Image.open(cloudsync.ensure(updir(pid) / u["file"])).convert("RGB")
             out = remove(im, session=session)
             alpha = out.split()[3]
             coverage = sum(alpha.point(lambda v: 255 if v > 128 else 0).histogram()[255:]) / (im.width * im.height)
@@ -349,11 +354,13 @@ def index():
 
 @app.route("/files/<pid>/<path:sub>")
 def project_file(pid, sub):
+    cloudsync.ensure(store.project_dir(pid) / sub)
     return send_from_directory(store.project_dir(pid), sub)
 
 
 @app.route("/brand-assets/<slug>/<path:fname>")
 def brand_file(slug, fname):
+    cloudsync.ensure(brand_dir(slug) / fname)
     return send_from_directory(brand_dir(slug), fname)
 
 
@@ -470,6 +477,9 @@ def create_project():
             continue
         try:
             im = ImageOps.exif_transpose(Image.open(f.stream))  # fixes sideways phone photos
+            limit = 2000 if LOW_MEMORY else 4096
+            if max(im.size) > limit:  # huge phone photos are shrunk (still sharp at 1080px Instagram size)
+                im.thumbnail((limit, limit), Image.LANCZOS)
         except Exception:
             continue
         uid = f"photo-{len(uploads) + 1}"
@@ -501,6 +511,7 @@ def get_project(pid):
 @app.delete("/api/projects/<pid>")
 def delete_project(pid):
     import shutil
+    cloudsync.forget(store.project_dir(pid))
     shutil.rmtree(store.project_dir(pid), ignore_errors=True)
     return jsonify(ok=True)
 
@@ -669,6 +680,11 @@ def current():
 @app.before_request
 def guard():
     path = request.path
+    if cloudsync.blocked() and not path.startswith(("/static/",)):
+        if path.startswith("/api/"):
+            return jsonify(error=cloudsync.error() or "Storage is starting up. Reload in a moment."), 503
+        if path != "/":
+            return jsonify(error=cloudsync.error()), 503
     # Running on your own computer with a temporary public link: only the approved image may be reached from outside.
     if not settings.hosted() and _is_remote() and not path.startswith("/public/"):
         abort(403)
@@ -690,8 +706,18 @@ def guard():
     return None
 
 
+_last_token_check = [0.0]
+
+
 @app.after_request
 def no_store(resp):
+    # Save changes to cloud storage straight away after anything that changed data.
+    if cloudsync.enabled() and request.method not in ("GET", "HEAD"):
+        threading.Thread(target=cloudsync.flush, daemon=True).start()
+    # The free plan sleeps between visits, so renew Instagram connections when the app is used.
+    if _time.time() - _last_token_check[0] > 6 * 3600 and settings.ig_accounts():
+        _last_token_check[0] = _time.time()
+        threading.Thread(target=refresh_instagram_tokens, daemon=True).start()
     if request.path.startswith("/api/"):
         resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Frame-Options"] = "DENY"
@@ -981,7 +1007,7 @@ def create_approval(pid):
     adir.mkdir(parents=True, exist_ok=True)
     pngs = []
     for i, rel in enumerate(v["pngs"]):
-        shutil.copy(store.project_dir(pid) / rel, adir / f"slide-{i + 1}.png")
+        shutil.copy(cloudsync.ensure(store.project_dir(pid) / rel), adir / f"slide-{i + 1}.png")
         pngs.append(f"approvals/{aid}/slide-{i + 1}.png")
     cap_key = body.get("caption", "primary")
     already = [x for x in p.get("approvals", []) if x["cid"] == c["id"] and x["index"] == idx and x["state"] == "published"]
@@ -1110,7 +1136,7 @@ def run_publish(pid, aid, test):
         adir = store.project_dir(pid) / "approvals" / aid
         jpgs = []
         for i, rel in enumerate(a["pngs"]):
-            im = Image.open(store.project_dir(pid) / rel).convert("RGB")
+            im = Image.open(cloudsync.ensure(store.project_dir(pid) / rel)).convert("RGB")
             out = adir / f"slide-{i + 1}.jpg"
             im.save(out, "JPEG", quality=95, subsampling=0, optimize=True)
             jpgs.append(out.name)
@@ -1189,6 +1215,7 @@ def public_image(token, name):
     pid, aid, _ = entry
     if pid == "__probe__":
         return send_from_directory(TESTS_DIR, "probe.jpg", mimetype="image/jpeg")
+    cloudsync.ensure(store.project_dir(pid) / "approvals" / aid / name)
     return send_from_directory(store.project_dir(pid) / "approvals" / aid, name, mimetype="image/jpeg")
 
 
@@ -1293,7 +1320,9 @@ def diagnostics():
     return jsonify(
         provider=llm.provider(), text_model=llm.text_model(), image_model=imagegen.model(), image_quality=imagegen.quality(),
         openai_key=bool(okey) and not okey.startswith("paste"), claude_key=bool(os.getenv("ANTHROPIC_API_KEY", "").strip()),
-        image_generation=imagegen.enabled(), renderer=renderer, cutouts=importlib.util.find_spec("rembg") is not None,
+        image_generation=imagegen.enabled(), renderer=renderer,
+        cutouts=importlib.util.find_spec("rembg") is not None and not LOW_MEMORY and os.getenv("ENABLE_CUTOUTS", "1") != "0",
+        storage=cloudsync.status(), low_memory=LOW_MEMORY,
         cloudflared=bool(tunnel.executable()) or bool(settings.public_base_url()), hosted=settings.hosted(),
         instagram=bool(settings.ig_accounts()) or instagram.configured(),
         ig_accounts={k: v.get("username") for k, v in settings.ig_accounts().items()},
@@ -1406,7 +1435,9 @@ def startup():
     if _started:
         return
     _started = True
+    cloudsync.restore()
     store.recover_interrupted()
+    cloudsync.start()
     threading.Thread(target=_refresher, daemon=True).start()
 
 

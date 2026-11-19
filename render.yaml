@@ -1,17 +1,23 @@
-# Render Blueprint: New -> Blueprint -> connect this repository -> Apply.
+# Render Blueprint — FREE version. New -> Blueprint -> connect this repository -> Apply.
+# Free web services sleep after 15 minutes and have no permanent disk, so the studio keeps its data in your
+# free Supabase project (see DEPLOY-RENDER.md). For the paid version use render.paid.yaml instead.
 services:
   - type: web
     name: studio
     runtime: docker
-    plan: standard          # 2 GB RAM: image rendering + photo cut-outs need it
+    plan: free
     healthCheckPath: /api/auth/state
-    disk:
-      name: studio-data
-      mountPath: /data      # campaigns, images, brands, settings and accounts live here and survive deploys
-      sizeGB: 5
     envVars:
       - key: SECRET_KEY
-        generateValue: true # encrypts saved keys and signs logins — never change it after first deploy
+        generateValue: true   # encrypts saved keys and signs logins — never change it after the first deploy
+      - key: DATA_DIR
+        value: /tmp/studio-data
+      - key: LOW_MEMORY
+        value: "1"            # fits Render's free 512 MB: one design at a time, light renderer, no photo cut-outs
+      - key: SUPABASE_URL
+        sync: false           # you paste this when you click Apply (Supabase -> Project Settings -> API -> Project URL)
+      - key: SUPABASE_SERVICE_KEY
+        sync: false           # you paste this when you click Apply (Supabase -> Project Settings -> API -> service_role key)
       - key: TEXT_PROVIDER
         value: openai
       - key: OPENAI_TEXT_MODEL
@@ -19,8 +25,6 @@ services:
       - key: OPENAI_IMAGE_MODEL
         value: gpt-image-2
       - key: OPENAI_IMAGE_QUALITY
-        value: high
-      - key: OPENAI_REASONING_EFFORT
         value: high
       - key: REVIEW_ROUNDS
         value: "3"

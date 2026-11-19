@@ -45,7 +45,8 @@ def _cutout(png_bytes):
 def make(prompt, shape, transparent, out_dir, refs=None):
     """Generate (or edit from reference images) one asset. Returns the saved file name. Identical requests are reused, never re-billed."""
     size = SIZES.get(shape, SIZES["portrait"])
-    refs = [Path(r) for r in (refs or [])]
+    import cloudsync
+    refs = [cloudsync.ensure(Path(r)) for r in (refs or [])]
     key = hashlib.sha256(json_key(model(), quality(), prompt, size, transparent, [r.name for r in refs]).encode()).hexdigest()[:16]
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

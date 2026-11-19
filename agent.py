@@ -17,7 +17,8 @@ MAX_TOKENS = 20000
 # ---------------- images for Claude to look at ----------------
 
 def image_block(path, max_side=1568):
-    im = Image.open(path)
+    import cloudsync
+    im = Image.open(cloudsync.ensure(path))
     if max(im.size) > max_side:
         im.thumbnail((max_side, max_side))
     buf = io.BytesIO()
