@@ -738,7 +738,7 @@ async function settingsView() {
          <label class="toggle" style="margin:0"><input type="checkbox" ${st.image_generation ? 'checked' : ''} onchange="setFlag('image_generation', this.checked)"><span>Image generation</span></label></div>`
       : `<p>Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com → API keys</a>. Add billing credit first: the API is paid separately from ChatGPT.</p>`)
       .replace('</div></div>', `<form id="okey" class="row ${st.openai ? 'hidden' : ''}" style="margin-top:12px" onsubmit="saveKey(event)"><input type="password" name="key" placeholder="sk-…" autocomplete="off" style="flex:1"><button class="btn primary">Save &amp; test</button></form><p class="issues" id="keyErr"></p></div></div>`)}
-    ${step(2, !!(st.meta_app_id && st.meta_secret), 'Connect your Instagram app (one time)', `
+    ${step(2, !!(st.meta_app_id && st.meta_secret) || (!st.hosted && anyIg), st.hosted ? 'Connect your Instagram app (one time)' : 'Your Instagram app (only needed for the online version)', `
       <p>Instagram only lets apps publish through an app registered with Meta. Create it once (see the guide in the README), then paste its details here.</p>
       <ol class="steps"><li>In your Meta app, open <b>Instagram → API setup with Instagram login → Set up Instagram business login</b>.</li>
       <li>Under <b>OAuth redirect URIs</b>, add exactly: <code id="ruri">${esc(st.redirect_uri)}</code> <button class="btn small ghost" onclick="copy($('#ruri').textContent)">Copy</button>${st.hosted ? '' : '<br><small class="issues">This is your local address: Instagram login needs the hosted (https) version on Render.</small>'}</li>
@@ -747,10 +747,14 @@ async function settingsView() {
       <input type="password" name="app_secret" placeholder="${st.meta_secret ? 'Instagram app secret (saved)' : 'Instagram app secret'}" style="flex:1" autocomplete="off"><button class="btn primary">Save</button></form>`)}
     ${step(3, anyIg, 'Log in to each brand\'s Instagram', `
       <p>Each brand publishes to its own account. The account must be a <b>Professional</b> account (Business or Creator) and added to your Meta app as a tester. Connections renew automatically.</p>
+      ${st.hosted ? '' : `<p class="note" style="margin:10px 0"><b>Running on your own computer</b>Instagram's login button needs an online (https) address, so here you paste a token instead:
+        in your Meta app open <b>Instagram → API setup with Instagram login → Generate access tokens</b>, click <b>Add account</b>, log in to the brand's Instagram, then <b>Generate token</b> and copy it.
+        Tokens last about 60 days; the app renews them automatically while it's running.</p>`}
       ${brands.map(([slug, a]) => `<div class="igrow"><b>${esc(a.brand)}</b>
         ${a.connected ? `<span class="okc">✓ @${esc(a.username)}</span><small>${esc(a.account_type || '')} · renews automatically · ${a.days_left} days left · connected by ${esc(a.connected_by || '')}</small>
-          <span class="spacer"></span><a class="btn small" href="/auth/instagram/start?brand=${slug}">Reconnect</a><button class="btn small ghost" onclick="igDisconnect('${slug}')">Disconnect</button>`
-        : `<span class="spacer"></span>${st.meta_app_id && st.meta_secret ? `<a class="btn small primary" href="/auth/instagram/start?brand=${slug}">Log in with Instagram</a>` : '<small>Finish step 2 first</small>'}`}</div>`).join('')}
+          <span class="spacer"></span>${st.hosted ? `<a class="btn small" href="/auth/instagram/start?brand=${slug}">Reconnect</a>` : ''}<button class="btn small ghost" onclick="igDisconnect('${slug}')">Disconnect</button>`
+        : st.hosted ? `<span class="spacer"></span>${st.meta_app_id && st.meta_secret ? `<a class="btn small primary" href="/auth/instagram/start?brand=${slug}">Log in with Instagram</a>` : '<small>Finish step 2 first</small>'}`
+        : `<form class="row" style="flex:1" onsubmit="pasteToken(event,'${slug}')"><input type="password" name="token" placeholder="Paste access token" autocomplete="off" style="flex:1"><button class="btn small primary">Connect</button></form>`}</div>`).join('')}
       ${q.get('ig') === 'failed' ? `<p class="issues" id="igErr"></p>` : ''}`)}
     ${step(4, !st.ig_test_mode, 'Publishing mode', `
       <p>${st.ig_test_mode ? '<b style="color:var(--accent)">Test mode is ON.</b> APPROVE &amp; PUBLISH runs every check but posts nothing. Turn it off only after all tests in <a href="#/setup">Setup &amp; tests</a> pass.'
@@ -778,6 +782,11 @@ async function saveKey(e) {
 }
 async function delKey() { if (await confirmBox('Remove the OpenAI key? The studio will stop working until a new one is added.')) { await api('/api/settings/openai', { method: 'DELETE' }); settingsView(); } }
 async function saveMeta(e) { e.preventDefault(); try { await api('/api/settings/meta', { method: 'PUT', json: Object.fromEntries(new FormData(e.target)) }); toast('Saved'); settingsView(); } catch (err) { toast(err.message); } }
+async function pasteToken(e, slug) {
+  e.preventDefault();
+  try { const r = await api(`/api/settings/instagram/${slug}/token`, { method: 'PUT', json: { token: e.target.token.value } }); toast('Connected @' + r.username); settingsView(); }
+  catch (err) { toast(err.message); }
+}
 async function igDisconnect(slug) { if (await confirmBox('Disconnect this Instagram account? Nothing can be published for this brand until it is reconnected.')) { await api('/api/settings/instagram/' + slug, { method: 'DELETE' }); settingsView(); } }
 async function setFlag(k, v) { try { await api('/api/settings/flags', { method: 'PUT', json: { [k]: v } }); cfg = await api('/api/config'); enter(); } catch (e) { toast(e.message); } }
 function goLive() {

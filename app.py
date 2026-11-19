@@ -891,6 +891,23 @@ def ig_callback():
     return redirect(f"/#/settings?ig=connected")
 
 
+@app.put("/api/settings/instagram/<brand>/token")
+def ig_paste_token(brand):
+    """For running on your own computer: paste a token generated in the Meta app dashboard."""
+    brand = store.safe(brand)
+    tok = ((request.json or {}).get("token") or "").strip()
+    if len(tok) < 20:
+        return jsonify(error="Paste the whole access token from your Meta app."), 400
+    try:
+        acc = instagram.account(tok)
+    except Exception as e:
+        return jsonify(error=friendly(e)), 400
+    settings.save_ig_account(brand, tok, {"user_id": acc["id"], "username": acc.get("username"), "account_type": acc.get("account_type"),
+                                          "picture": acc.get("picture"), "expires_at": int(_time.time()) + 60 * 86400,
+                                          "connected_at": store.now(), "connected_by": current()["email"], "method": "token"})
+    return jsonify(ok=True, username=acc.get("username"))
+
+
 @app.get("/api/settings/last-error")
 def last_ig_error():
     return jsonify(error=settings.get("last_ig_error") or "")
