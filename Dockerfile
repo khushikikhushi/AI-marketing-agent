@@ -11,7 +11,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 COPY requirements.txt requirements-server.txt ./
-RUN pip install -r requirements.txt -r requirements-server.txt \
+# Playwright's helper needs libatomic1 before it can install the browser and its other system libraries.
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
+ && pip install -r requirements.txt -r requirements-server.txt \
  && python -m playwright install --with-deps chromium \
  && if [ "$INSTALL_CUTOUTS" = "1" ]; then pip install "rembg[cpu]"; fi \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
